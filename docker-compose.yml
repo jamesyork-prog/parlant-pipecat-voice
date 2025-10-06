@@ -1,0 +1,79 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: parlant-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ranjayDB}
+      POSTGRES_USER: ${POSTGRES_USER:-ranjay.kumar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ranjay}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ranjay.kumar}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - parlant-network
+
+  parlant:
+    build:
+      context: ./parlant
+      dockerfile: Dockerfile
+    container_name: parlant-server
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      POSTGRES_DB: ${POSTGRES_DB:-ranjayDB}
+      POSTGRES_USER: ${POSTGRES_USER:-ranjay.kumar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ranjay}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+    ports:
+      - "8800:8800"
+    volumes:
+#      - agent_data:/app/data
+      - ./data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - parlant-network
+    restart: unless-stopped
+
+  pipecat:
+    build:
+      context: ./voice
+      dockerfile: Dockerfile
+    container_name: pipecat-voice
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      PARLANT_BASE_URL: http://parlant:8800
+      TURN_TIMEOUT_SECS: ${TURN_TIMEOUT_SECS:-30}
+      POLL_WAIT_SECS: ${POLL_WAIT_SECS:-10}
+      MAX_EMPTY_POLLS: ${MAX_EMPTY_POLLS:-3}
+      # Add these for WebRTC
+      #PIPECAT_HOST: host.docker.internal
+      #PUBLIC_IP: host.docker.internal  
+      ICE_SERVERS: ${ICE_SERVERS:-stun:stun.l.google.com:19302}    
+    ports:
+      - "7860:7860"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - agent_data:/app/data:ro
+    depends_on:
+      - parlant
+    networks:
+      - parlant-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  agent_data:
+
+networks:
+  parlant-network:
+    driver: bridge

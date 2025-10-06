@@ -1,0 +1,9 @@
+pipecat-ai[runner,openai,silero,webrtc,cartesia,daily]>=0.0.84
+python-dotenv>=1.0.1
+loguru>=0.7.2
+parlant-client>=3.0.0
+httpx
+fastapi
+uvicorn
+tenacity
+deepgram-sdk
