@@ -44,9 +44,8 @@ ENV_AGENT_ID = (os.getenv("PARLANT_AGENT_ID") or "").strip() or None
 # WebRTC ICE configuration
 ICE_SERVERS = os.getenv("ICE_SERVERS", "stun:stun.l.google.com:19302")
 
-# Event-driven configuration
+# Event-driven configuration (much simpler)
 STREAM_TIMEOUT_SECS = int(os.getenv("STREAM_TIMEOUT_SECS", "30"))  # Max time for a single turn
-TURN_IDLE_TIMEOUT = float(os.getenv("TURN_IDLE_TIMEOUT", "4.0"))  # Seconds of idle before completing turn
 
 
 # ---------- Logging helpers ----------
@@ -147,8 +146,6 @@ class ParlantBridge(FrameProcessor):
         
         # Message buffering
         self._pending_messages = []
-        self._is_flushing = False  # Prevent concurrent flushes
-        self._flush_lock = asyncio.Lock()
 
     async def open_session(self):
         log_header("Opening Parlant session")
@@ -173,22 +170,6 @@ class ParlantBridge(FrameProcessor):
                 else:
                     log_error("Failed to create Parlant session after all retries", e)
                     raise
-
-    async def get_tail_offset(self) -> int:
-        """Return highest current offset, or -1 if no events yet."""
-        if not self._session_id:
-            return -1
-        try:
-            events = await self._client.sessions.list_events(
-                self._session_id, min_offset=0, wait_for_data=0
-            )
-            if not events:
-                return -1
-            tail = max(ev.offset for ev in events)
-            return tail
-        except Exception as e:
-            log_error("get_tail_offset failed", e)
-            return -1
 
     async def _event_stream_observer(self):
         """
@@ -238,58 +219,42 @@ class ParlantBridge(FrameProcessor):
         if kind == "message" and src in ("ai_agent", "assistant"):
             message = data.get("message", "")
             if message:
-                log_info(f"💬 Buffering message (length={len(message)}): {message[:100]}...")
+                log_info(f"💬 Buffering: {message[:100]}...")
                 self._pending_messages.append(message)
-                log_info(f"📦 Buffer now contains {len(self._pending_messages)} message(s)")
         
         # Tool execution started
         elif kind == "tool_call":
-            if self._state != TurnState.PROCESSING:
-                await self._transition_state(TurnState.PROCESSING)
+            await self._transition_state(TurnState.PROCESSING)
             log_info(f"🔧 Tool called: {data.get('tool_name', 'unknown')}")
+        
+        # Check if turn is complete (heuristic: agent sent message and we're in PROCESSING)
+        # When we receive an agent message, it usually means the turn is done
+        if kind == "message" and src in ("ai_agent", "assistant") and self._state != TurnState.SPEAKING:
+            # Flush buffered messages
+            await self._flush_messages()
 
     async def _flush_messages(self):
-        """Send all buffered messages to TTS. Protected against concurrent calls."""
-        # Prevent concurrent flushing
-        if self._is_flushing:
-            log_info("⏭️  Flush already in progress, skipping")
-            return
-        
-        # Quick check - nothing to flush
+        """Send all buffered messages to TTS."""
         if not self._pending_messages:
             return
         
-        async with self._flush_lock:
-            # Double-check after acquiring lock
-            if not self._pending_messages:
-                return
-            
-            self._is_flushing = True
-            await self._transition_state(TurnState.SPEAKING)
-            
-            # Copy and clear messages immediately
-            messages_to_speak = self._pending_messages.copy()
-            self._pending_messages.clear()
-            
-            log_header("🗣️  Speaking buffered messages")
-            log_info(f"Will speak {len(messages_to_speak)} message(s)")
-            
-            for idx, message in enumerate(messages_to_speak, 1):
-                log_info(f"Speaking {idx}/{len(messages_to_speak)}: {message[:100]}...")
-                try:
-                    await self.push_frame(LLMFullResponseStartFrame())
-                    await self.push_frame(TextFrame(text=message))
-                    await self.push_frame(LLMFullResponseEndFrame())
-                    
-                    # Brief pause between messages
-                    if idx < len(messages_to_speak):
-                        await asyncio.sleep(0.3)
-                except Exception as e:
-                    log_error("Failed to speak message", e)
-            
-            self._is_flushing = False
-            await self._transition_state(TurnState.IDLE)
-            log_info("✅ Finished speaking all messages")
+        await self._transition_state(TurnState.SPEAKING)
+        
+        log_header("🗣️  Speaking buffered messages")
+        for message in self._pending_messages:
+            log_info(f"Speaking: {message[:100]}...")
+            try:
+                await self.push_frame(LLMFullResponseStartFrame())
+                await self.push_frame(TextFrame(text=message))
+                await self.push_frame(LLMFullResponseEndFrame())
+                
+                # Brief pause between messages
+                await asyncio.sleep(0.3)
+            except Exception as e:
+                log_error("Failed to speak message", e)
+        
+        self._pending_messages.clear()
+        await self._transition_state(TurnState.IDLE)
 
     async def _send_user_message(self, user_text: str):
         """Send user message and start processing turn."""
@@ -303,16 +268,6 @@ class ParlantBridge(FrameProcessor):
         await self._transition_state(TurnState.PROCESSING)
         
         try:
-            # CRITICAL: Get current tail BEFORE posting message
-            # This ensures we only process NEW events for THIS turn
-            current_tail = await self.get_tail_offset()
-            new_baseline = current_tail + 1
-            log_info(f"📍 Setting baseline offset to {new_baseline} (tail was {current_tail})")
-            
-            # Start turn processor FIRST (it will wait for events)
-            turn_task = asyncio.create_task(self._process_turn(baseline_offset=new_baseline))
-            
-            # NOW post the message
             await self._client.sessions.create_event(
                 self._session_id, 
                 kind="message", 
@@ -321,26 +276,23 @@ class ParlantBridge(FrameProcessor):
             )
             log_info("✅ Message sent")
             
-            # Wait for turn to complete
-            await turn_task
+            # Start turn processor that watches for events
+            asyncio.create_task(self._process_turn())
             
         except Exception as e:
             log_error("Failed to send message", e)
             await self._transition_state(TurnState.IDLE)
 
-    async def _process_turn(self, baseline_offset: int):
+    async def _process_turn(self):
         """
         Process events for the current turn.
-        Only processes events with offset >= baseline_offset.
-        Exits when we detect turn completion (no events for a while after agent messages).
+        Exits when we detect turn completion (no events for a short time after agent response).
         """
-        log_info(f"⏳ Processing turn (baseline offset: {baseline_offset})...")
+        log_info("⏳ Processing turn...")
         turn_complete = False
         idle_time = 0
         check_interval = 0.5  # Check every 500ms
-        max_idle = TURN_IDLE_TIMEOUT  # Configurable idle timeout
-        has_received_message = False
-        message_count = 0
+        max_idle = 2.0  # Consider turn done after 2s idle following agent message
         
         while not turn_complete:
             try:
@@ -350,36 +302,16 @@ class ParlantBridge(FrameProcessor):
                     timeout=check_interval
                 )
                 
-                # CRITICAL: Only process events from THIS turn
-                if event.offset < baseline_offset:
-                    log_info(f"⏭️  Skipping old event offset={event.offset} (baseline={baseline_offset})")
-                    continue
-                
-                # Reset idle counter - we got a relevant event
+                # Reset idle counter - we got an event
                 idle_time = 0
                 await self._handle_event(event)
-                
-                # Track agent messages
-                kind = getattr(event, "kind", "?")
-                src = getattr(event, "source", "?")
-                
-                if kind == "message" and src in ("ai_agent", "assistant"):
-                    has_received_message = True
-                    message_count += 1
-                    log_info(f"📊 Received message #{message_count} from agent")
                 
             except asyncio.TimeoutError:
                 # No event received
                 idle_time += check_interval
                 
-                # Flush when:
-                # 1. We have pending buffered messages
-                # 2. Agent has sent at least one message
-                # 3. We've been idle for max_idle seconds
-                if (has_received_message and 
-                    self._pending_messages and 
-                    idle_time >= max_idle):
-                    log_info(f"💤 Idle for {idle_time}s after {message_count} message(s), flushing...")
+                # If we have pending messages and we've been idle, flush them
+                if self._pending_messages and idle_time >= max_idle:
                     await self._flush_messages()
                     turn_complete = True
                     log_info("✅ Turn complete")

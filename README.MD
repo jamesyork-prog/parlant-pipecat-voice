@@ -13,7 +13,44 @@ A voice-enabled customer support system combining Parlant's AI agent framework w
 ## Architecture
 
 ```
+Architecture Overview
+Three main components:
+
+Parlant (Port 8800) - The AI agent backend
+
+Manages conversation journeys (structured dialogue flows)
+Implements a refund request workflow with conditional logic
+Connects to PostgreSQL for product data
+Provides tools: check_refund_eligibility, process_refund, find_products
+
+
+Pipecat (Port 7860) - The voice interface layer
+
+Handles WebRTC audio streaming from browser
+Speech-to-text using OpenAI Whisper
+Text-to-speech using OpenAI TTS
+Voice Activity Detection (VAD) using Silero
+ParlantBridge: Custom processor that connects voice pipeline to Parlant
+
+
+PostgreSQL (Port 5432) - Database
+
+Product catalog with sample electronics/accessories
+Order history structure
+```
+
+```
 Browser (WebRTC) ←→ Pipecat (Voice I/O) ←→ Parlant (AI Logic) ←→ PostgreSQL
+```
+
+## Key Flow
+
+```
+User speaks → Pipecat (STT) → ParlantBridge → Parlant Agent → Response
+                                                    ↓
+                                              PostgreSQL
+                                                    ↓
+Response ← Pipecat (TTS) ← ParlantBridge ← Agent decides action
 ```
 
 ## Quick Start
