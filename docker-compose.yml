@@ -34,8 +34,11 @@ services:
     ports:
       - "8800:8800"
     volumes:
-#      - agent_data:/app/data
+      - ./parlant:/app/app_tools
+      - ./tests:/app/tests
       - ./data:/app/data
+      - ./parlant/main.py:/app/main.py
+      - ./pytest.ini:/app/pytest.ini
     depends_on:
       postgres:
         condition: service_healthy
@@ -43,36 +46,8 @@ services:
       - parlant-network
     restart: unless-stopped
 
-  pipecat:
-    build:
-      context: ./voice
-      dockerfile: Dockerfile
-    container_name: pipecat-voice
-    environment:
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      PARLANT_BASE_URL: http://parlant:8800
-      TURN_TIMEOUT_SECS: ${TURN_TIMEOUT_SECS:-30}
-      POLL_WAIT_SECS: ${POLL_WAIT_SECS:-10}
-      MAX_EMPTY_POLLS: ${MAX_EMPTY_POLLS:-3}
-      # Add these for WebRTC
-      #PIPECAT_HOST: host.docker.internal
-      #PUBLIC_IP: host.docker.internal  
-      ICE_SERVERS: ${ICE_SERVERS:-stun:stun.l.google.com:19302}    
-    ports:
-      - "7860:7860"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    volumes:
-      - agent_data:/app/data:ro
-    depends_on:
-      - parlant
-    networks:
-      - parlant-network
-    restart: unless-stopped
-
 volumes:
   postgres_data:
-  agent_data:
 
 networks:
   parlant-network:

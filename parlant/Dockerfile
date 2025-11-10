@@ -2,6 +2,8 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+ENV PYTHONPATH="/app:${PYTHONPATH}"
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
@@ -13,7 +15,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY main.py .
+COPY . /app/app_tools
+COPY main.py /app/main.py
 
 # Create data directory for agent_id.txt
 RUN mkdir -p /app/data

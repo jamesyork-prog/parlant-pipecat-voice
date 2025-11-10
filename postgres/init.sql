@@ -38,3 +38,45 @@ CREATE TABLE IF NOT EXISTS orders (
 CREATE INDEX idx_products_category ON products(category);
 CREATE INDEX idx_orders_number ON orders(order_number);
 CREATE INDEX idx_orders_email ON orders(customer_email);
+
+-- ============================================================
+-- Agent Logging Tables
+-- ============================================================
+
+-- The Audit Trail Table: A detailed, step-by-step log of every action
+CREATE TABLE IF NOT EXISTS agent_audit_log (
+    log_id SERIAL PRIMARY KEY,
+    run_id VARCHAR(255) NOT NULL,
+    timestamp TIMESTAMPTZ DEFAULT NOW(),
+    event_type VARCHAR(50),
+    event_details JSONB,
+    status VARCHAR(50),
+    error_message TEXT
+);
+
+-- The Metrics Table: A high-level summary of each journey run for reporting
+CREATE TABLE IF NOT EXISTS agent_run_metrics (
+    metric_id SERIAL PRIMARY KEY,
+    run_id VARCHAR(255) UNIQUE NOT NULL,
+    journey_name VARCHAR(255),
+    start_time TIMESTAMPTZ,
+    end_time TIMESTAMPTZ,
+    duration_ms INTEGER,
+    final_outcome VARCHAR(50),
+    ticket_id VARCHAR(255)
+);
+
+-- The Context "Memory" Table: A persistent store of key facts about customers
+CREATE TABLE IF NOT EXISTS customer_context (
+    customer_id VARCHAR(255) PRIMARY KEY,
+    last_interaction_date TIMESTAMPTZ,
+    total_interactions INTEGER DEFAULT 1,
+    total_denials INTEGER DEFAULT 0,
+    custom_notes JSONB
+);
+
+-- Create indexes for agent logging tables
+CREATE INDEX idx_audit_log_run_id ON agent_audit_log(run_id);
+CREATE INDEX idx_audit_log_timestamp ON agent_audit_log(timestamp);
+CREATE INDEX idx_run_metrics_journey ON agent_run_metrics(journey_name);
+CREATE INDEX idx_customer_context_last_interaction ON customer_context(last_interaction_date);

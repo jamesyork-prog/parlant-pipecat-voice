@@ -5,266 +5,181 @@ import parlant.sdk as p
 import psycopg2
 from typing import Annotated
 
-
+# --- Globals ---
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 AGENT_ID_FILE = pathlib.Path("/app/data/agent_id.txt")
 
-#async def get_db_connection(db_name, db_user, db_password, db_host, db_port):
-async def get_db_connection():
+# Import all tools
+from app_tools.tools.freshdesk_tools import get_ticket, add_note, update_ticket
+from app_tools.tools.database_logger import log_audit_trail, log_run_metrics, update_customer_context
+from app_tools.tools.lakera_security_tool import check_content
+from app_tools.tools.journey_helpers import extract_booking_info_from_note, triage_ticket
+from app_tools.tools.parkwhiz_tools import get_customer_orders
+import uuid
+from datetime import datetime
+
+
+# --- Journeys ---
+
+async def create_ticket_ingestion_journey(agent: p.Agent):
     """
-    Establishes and returns a connection to a PostgreSQL database.
-
-    Args:
-        db_name (str): The name of the database.
-        db_user (str): The username for the database.
-        db_password (str): The password for the user.
-        db_host (str): The host address of the database server.
-        db_port (str): The port number for the database connection.
-
-    Returns:
-        psycopg2.connection: A connection object to the database, or None if the connection fails.
-    """
-    try:
-        conn = psycopg2.connect(
-            host=os.getenv("POSTGRES_HOST", "localhost"),
-            database=os.getenv("POSTGRES_DB", "ranjayDB"),
-            user=os.getenv("POSTGRES_USER", "ranjay.kumar"),
-            password=os.getenv("POSTGRES_PASSWORD", "ranjay"),
-            port=os.getenv("POSTGRES_PORT", "5432")
-        )
-        print("Database connection successful.")
-        return conn
-    except psycopg2.OperationalError as e:
-        print(f"Error: Unable to connect to the database. {e}")
-        return None
-
-
-@p.tool
-async def find_products(context: p.ToolContext, query: str) -> p.ToolResult:
-    """Fetch products based on a natural-language search query."""
-
-    # Get the database connection
-    conn = psycopg2.connect(
-        host=os.getenv("POSTGRES_HOST", "localhost"),
-        database=os.getenv("POSTGRES_DB", "ranjayDB"),
-        user=os.getenv("POSTGRES_USER", "ranjay.kumar"),
-        password=os.getenv("POSTGRES_PASSWORD", "ranjay"),
-        port=os.getenv("POSTGRES_PORT", "5432")
-    )
-    print("Database connection successful.")
-
-    # Create a cursor object
-    cur = conn.cursor()
-
-    # Execute a sample query
-    #cur.execute("SELECT version();")
-    #products = cur.fetchone()
-    cur.execute("SELECT * FROM public.products ORDER BY product_id ASC LIMIT 2")
-    products = cur.fetchall()
-    print(f"PostgreSQL database version: {products}")
-
-    # Close the cursor and connection
-    cur.close()
-    conn.close()
-
-    return p.ToolResult(products)
-
-# -----------------------------
-# Tools (mock business logic)
-# -----------------------------
-@p.tool
-async def check_refund_eligibility(
-    context: p.ToolContext,
-    order_number: Annotated[str, p.ToolParameterOptions(
-        source="customer",
-        description="Order number provided by the customer",
-        significance="We need this to locate your purchase."
-    )],
-    refund_reason: Annotated[str, p.ToolParameterOptions(
-        source="customer",
-        description="Short description of why you want a refund",
-        examples=["defective", "broken", "changed my mind"]
-    )],
-    days_since_purchase: Annotated[int | None, p.ToolParameterOptions(
-        source="customer",
-        description="Number of days since you purchased the item",
-        examples=["7", "14", "45"]
-    )] = None,
-    unopened: Annotated[bool | None, p.ToolParameterOptions(
-        source="customer",
-        description="Whether the item is unopened",
-        examples=["yes", "no"]
-    )] = None,
-) -> p.ToolResult:
-    reason = (refund_reason or "").lower()
-    dsp = days_since_purchase if isinstance(days_since_purchase, int) else 999
-    is_unopened = bool(unopened)
-
-    eligible = False
-    policy = ""
-
-    if any(k in reason for k in ("defect", "broken", "damage", "damaged")):
-        eligible = True
-        policy = "Defective items are always eligible for a refund."
-    else:
-        if dsp <= 30 and is_unopened:
-            eligible = True
-            policy = "Non-defective items are eligible if unopened within 30 days."
-        else:
-            policy = "Non-defective items must be unopened and returned within 30 days."
-
-    return p.ToolResult(
-        data={
-            "order_number": order_number,
-            "refund_reason": refund_reason,
-            "days_since_purchase": dsp,
-            "unopened": is_unopened,
-            "eligible": eligible,
-            "policy_explanation": policy,
-        }
-    )
-
-@p.tool
-async def process_refund(
-    context: p.ToolContext,
-    order_number: Annotated[str, p.ToolParameterOptions(
-        source="context",
-        description="Order number for which to process the refund"
-    )],
-) -> p.ToolResult:
-    refund_id = f"RFD-{order_number}"
-    return p.ToolResult(data={"refund_id": refund_id, "status": "processed"})
-
-
-async def create_refund_journey(agent: p.Agent):
-    """
-    Refund journey using conditional transitions (no fork()),
-    avoiding the JourneyTransition/transition_to mismatch.
+    Freshdesk ticket ingestion journey for automated refund processing.
+    Follows Parlant pattern: tool states must be followed by chat states.
     """
     journey = await agent.create_journey(
-        title="Refund Request",
-        conditions=["The customer is asking for a refund"],
-        description="Guide the customer through the refund process with clear steps and policy clarity.",
+        title="Freshdesk Ticket Ingestion",
+        conditions=["A new Freshdesk ticket needs processing"],
+        description="Automates refund request processing with security and policy checking.",
     )
-
-    # State 1: collect order number
-    s1 = await journey.initial_state.transition_to(
-        chat_state=(
-            "Politely ask for the order number. "
-            "Capture it as vars.order_number. If they don't have it, "
-            "offer to look it up by email or phone."
-        ),
-        canned_responses=[
-            await journey.create_canned_response(template="Sure—what’s your order number?"),
-            await journey.create_canned_response(template="If you don’t have it handy, I can look it up by your email or phone."),
-        ],
-    )
-
-    # State 2: collect reason + key facts
-    s2 = await s1.target.transition_to(
-        chat_state=(
-            "Ask for the reason for the refund and capture as vars.refund_reason. "
-            "If not defective, ask: Is the item unopened? Capture as vars.unopened (true/false). "
-            "Ask how many days since purchase, capture as vars.days_since_purchase (integer). "
-            "Confirm the facts with the customer before proceeding."
-        )
-    )
-
-    # Conditional branches (no fork() used)
-    s3_def = await s2.target.transition_to(
-        chat_state=(
-            "Acknowledge the defective issue empathetically. "
-            "Reassure that we’ll check eligibility and help resolve quickly."
-        ),
-        condition="The item is defective or damaged",
-    )
-
-    s3_cxm = await s2.target.transition_to(
-        chat_state=(
-            "Explain that for change-of-mind refunds, our standard policy requires the item to be unopened "
-            "and within 30 days. We'll check eligibility now."
-        ),
-        condition="The customer changed their mind or the item is not defective",
-    )
-
-    # Tool: check eligibility (both branches)
-    s4a = await s3_def.target.transition_to(tool_state=check_refund_eligibility)
-    s4b = await s3_cxm.target.transition_to(tool_state=check_refund_eligibility)
-
-    # Merge after tool → common chat state to convey result
-    s5 = await s4a.target.transition_to(
-        chat_state=(
-            "Review the result from check_refund_eligibility. "
-            "If eligible, say so and outline next steps. If not, explain clearly using policy_explanation "
-            "and offer alternatives like exchange or store credit."
-        )
-    )
-    # Point the other branch to the same next state
-    await s4b.target.transition_to(state=s5.target)
-
-    # If eligible, process the refund
-    s6 = await s5.target.transition_to(
-        tool_state=process_refund,
-        condition="The refund is eligible"
-    )
-
-    # Final notify state (chat state must follow a tool state)
-    await s6.target.transition_to(
-        chat_state=(
-            "If processing succeeded, share the refund_id and expected timeline. "
-            "If it failed, apologize and offer to escalate to a human."
-        )
-    )
-
-    # Optional: journey-scoped escalation guideline
-    @p.tool
-    async def transfer_to_human_agent(context: p.ToolContext) -> p.ToolResult:
-        return p.ToolResult.ok({"status": "queued_for_handoff"})
-
-    await journey.create_guideline(
-        condition="the customer is very upset or asks to speak to a manager",
-        action="Offer to connect them with a human agent and trigger transfer_to_human_agent.",
-        tools=[transfer_to_human_agent],
-    )
-
-async def main():
-  async with p.Server() as server:
-    agent = await server.create_agent(
-        name="Refund Assistant",
-        description="A helpful customer support agent that handles refunds politely and clearly."
-    )
-
-    agent_id = agent.id
-    # Persist the id so other processes can read it (voice bridge)
-    AGENT_ID_FILE.write_text(agent_id, encoding="utf-8")
-
-    print("\n=== Parlant server is running ===")
-    print("UI:   http://127.0.0.1:8800")
-    print(f"AGENT_ID: {agent_id}")
-    print(f"(Also saved to: {AGENT_ID_FILE})\n")    
-
-    # Add the refund journey
-    await create_refund_journey(agent)
-
-    ##############################
-    ##    Add the following:    ##
-    ##############################
-    await agent.create_guideline(
-        condition="the customer greets you",
-        action="Greet back warmly and ask how you can help today.",
-    )
-
-
-    CONDITION="the customer ask about products"
-    await agent.create_guideline(
-        # This is when the guideline will be triggered
-        condition=CONDITION,
-        # This is what the guideline instructs the agent to do
-        action="Confirm the inputs with user before running the fetch call. and after confirmation provide the list of products as a list",
-        tools=[find_products]
-    )    
     
+    # Fetch ticket
+    t1 = await journey.initial_state.transition_to(
+        chat_state="Fetching ticket from Freshdesk...",
+    )
+    t2 = await t1.target.transition_to(tool_state=get_ticket)
+    
+    # Security scan
+    t3 = await t2.target.transition_to(
+        chat_state="Running security scan on ticket content...",
+    )
+    t4 = await t3.target.transition_to(tool_state=check_content)
+    
+    # Security decision fork
+    t5_safe = await t4.target.transition_to(
+        chat_state="Content safe. Extracting booking info...",
+        condition="Content is safe",
+    )
+    t5_unsafe = await t4.target.transition_to(
+        chat_state="Security threat! Escalating to security team.",
+        condition="Content flagged as unsafe",
+    )
+    
+    # Extract booking info
+    t6 = await t5_safe.target.transition_to(tool_state=extract_booking_info_from_note)
+    
+    # Check if found
+    t7_found = await t6.target.transition_to(
+        chat_state="Booking info found. Analyzing refund eligibility...",
+        condition="Booking info extracted",
+    )
+    t7_missing = await t6.target.transition_to(
+        chat_state="No booking info in notes. Querying ParkWhiz API...",
+        condition="No booking info found",
+    )
+    
+    # ParkWhiz fallback
+    t8 = await t7_missing.target.transition_to(tool_state=get_customer_orders)
+    t9 = await t8.target.transition_to(
+        chat_state="Data retrieved. Analyzing refund eligibility...",
+    )
+    
+    # Triage (from both paths)
+    t10_notes = await t7_found.target.transition_to(tool_state=triage_ticket)
+    t10_api = await t9.target.transition_to(tool_state=triage_ticket)
+    
+    # APPROVED path from notes
+    t11_app_n = await t10_notes.target.transition_to(
+        chat_state="Refund approved! Adding note...",
+        condition="Decision is Approved",
+    )
+    t12_app_n = await t11_app_n.target.transition_to(tool_state=add_note)
+    t13_app_n = await t12_app_n.target.transition_to(
+        chat_state="Closing ticket...",
+    )
+    await t13_app_n.target.transition_to(tool_state=update_ticket)
+    
+    # APPROVED path from API
+    t11_app_a = await t10_api.target.transition_to(
+        chat_state="Refund approved! Adding note...",
+        condition="Decision is Approved",
+    )
+    t12_app_a = await t11_app_a.target.transition_to(tool_state=add_note)
+    t13_app_a = await t12_app_a.target.transition_to(
+        chat_state="Closing ticket...",
+    )
+    await t13_app_a.target.transition_to(tool_state=update_ticket)
+    
+    # DENIED path from notes
+    t11_den_n = await t10_notes.target.transition_to(
+        chat_state="Refund denied. Adding policy explanation...",
+        condition="Decision is Denied",
+    )
+    t12_den_n = await t11_den_n.target.transition_to(tool_state=add_note)
+    t13_den_n = await t12_den_n.target.transition_to(
+        chat_state="Updating ticket...",
+    )
+    await t13_den_n.target.transition_to(tool_state=update_ticket)
+    
+    # DENIED path from API
+    t11_den_a = await t10_api.target.transition_to(
+        chat_state="Refund denied. Adding policy explanation...",
+        condition="Decision is Denied",
+    )
+    t12_den_a = await t11_den_a.target.transition_to(tool_state=add_note)
+    t13_den_a = await t12_den_a.target.transition_to(
+        chat_state="Updating ticket...",
+    )
+    await t13_den_a.target.transition_to(tool_state=update_ticket)
+    
+    # ESCALATE path from notes
+    t11_esc_n = await t10_notes.target.transition_to(
+        chat_state="Needs human review. Escalating...",
+        condition="Decision is Needs Human Review",
+    )
+    t12_esc_n = await t11_esc_n.target.transition_to(tool_state=add_note)
+    t13_esc_n = await t12_esc_n.target.transition_to(
+        chat_state="Assigning to human...",
+    )
+    await t13_esc_n.target.transition_to(tool_state=update_ticket)
+    
+    # ESCALATE path from API
+    t11_esc_a = await t10_api.target.transition_to(
+        chat_state="Needs human review. Escalating...",
+        condition="Decision is Needs Human Review",
+    )
+    t12_esc_a = await t11_esc_a.target.transition_to(tool_state=add_note)
+    t13_esc_a = await t12_esc_a.target.transition_to(
+        chat_state="Assigning to human...",
+    )
+    await t13_esc_a.target.transition_to(tool_state=update_ticket)
+    
+    # ESCALATE from security
+    t11_sec = await t5_unsafe.target.transition_to(tool_state=add_note)
+    t12_sec = await t11_sec.target.transition_to(
+        chat_state="Assigning to security team...",
+    )
+    await t12_sec.target.transition_to(tool_state=update_ticket)
+    
+    print(f"✓ Created journey: {journey.title}")
 
-    await agent.attach_tool(condition=CONDITION, tool=find_products)
 
-asyncio.run(main())
+# --- Main Application ---
+async def main():
+    async with p.Server() as server:
+        # Ensure the data directory exists
+        AGENT_ID_FILE.parent.mkdir(exist_ok=True)
+
+        agent = await server.create_agent(
+            name="Whiz",
+            description="An agent that processes incoming tickets from Freshdesk.",
+        )
+
+        agent_id = agent.id
+        # Persist the id so other processes can read it (voice bridge)
+        AGENT_ID_FILE.write_text(agent_id, encoding="utf-8")
+
+        print("\n=== Parlant server is running ===")
+        print("UI:   http://127.0.0.1:8800")
+        print(f"AGENT_ID: {agent_id}")
+        print(f"(Also saved to: {AGENT_ID_FILE})\n")
+
+        # --- Register Journeys and Guidelines here ---
+        await create_ticket_ingestion_journey(agent)
+
+        # Add general guidelines
+        await agent.create_guideline(
+            condition="the customer greets you",
+            action="Greet back warmly and ask how you can help today.",
+        )
+
+    asyncio.run(main())
