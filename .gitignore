@@ -60,3 +60,9 @@ WARP.md
 
 # Kiro IDE files
 .kiro/
+
+# Debug scripts and test data
+tests/debug/
+data/
+backups/
+scripts/webhook_config_output.txt
