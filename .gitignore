@@ -57,3 +57,6 @@ logs/
 # Gemini and Warp specific files
 GEMINI.md
 WARP.md
+
+# Kiro IDE files
+.kiro/
