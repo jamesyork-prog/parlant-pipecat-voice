@@ -32,16 +32,11 @@ from app_tools.tools.freshdesk_tools import (
     add_note,
     update_ticket,
 )
-# NOTE: process_ticket_workflow disabled - depends on deleted booking_verifier module
-# from app_tools.tools.process_ticket_workflow import process_ticket_end_to_end
 from app_tools.tools.database_logger import log_audit_trail, log_run_metrics, update_customer_context
 from app_tools.tools.lakera_security_tool import check_content
 from app_tools.tools.journey_helpers import extract_booking_info_from_note, triage_ticket
-# from app_tools.tools.parkwhiz_tools import get_customer_orders  # TODO: Re-enable after implementing parkwhiz_tools
 from app_tools.tools.manual_trigger import trigger_ticket_processing
 from app_tools.tools.debug_ticket import debug_ticket_notes
-# NOTE: detect_duplicate_bookings tool deleted - ParkWhiz API cannot search by email
-# from app_tools.tools.detect_duplicate_bookings_tool import detect_duplicate_bookings
 from app_tools.tools.parkwhiz_client import validate_oauth2_credentials
 import uuid
 from datetime import datetime
@@ -267,39 +262,6 @@ async def create_interactive_processing_journey(agent: p.Agent):
     print(f"✓ Created journey: {journey.title}")
 
 
-# NOTE: Automated processing journey disabled - depends on deleted booking_verifier module
-# async def create_automated_processing_journey(agent: p.Agent):
-#     """
-#     Automated ticket processing journey triggered by webhooks.
-#     Executes silently without chat states for background processing.
-#     Includes comprehensive error handling and logging.
-#     """
-#     import time
-#     
-#     journey = await agent.create_journey(
-#         title="Automated Ticket Processing",
-#         conditions=[
-#             "A webhook event triggers automated processing",
-#             "System processes ticket without user interaction",
-#             "Background processing of Freshdesk ticket"
-#         ],
-#         description="Silent background processing of tickets via webhook. Executes the complete refund workflow autonomously without chat states.",
-#     )
-#     
-#     # Direct tool execution without chat states
-#     # This follows the requirement: "Remove all chat states"
-#     t1 = await journey.initial_state.transition_to(
-#         tool_state=process_ticket_end_to_end
-#     )
-#     
-#     # End with a final chat state (workaround for Parlant END_JOURNEY bug)
-#     await t1.target.transition_to(
-#         chat_state="Automated processing complete."
-#     )
-#     
-#     print(f"✓ Created journey: {journey.title}")
-
-
 # --- Main Application ---
 async def main():
     # Validate LLM configuration before starting server
@@ -351,8 +313,6 @@ async def main():
 
             # --- Register Journeys and Guidelines here ---
             await create_interactive_processing_journey(agent)
-            # NOTE: Automated processing journey disabled - depends on deleted booking_verifier module
-            # await create_automated_processing_journey(agent)
 
             # Add general guidelines
             await agent.create_guideline(

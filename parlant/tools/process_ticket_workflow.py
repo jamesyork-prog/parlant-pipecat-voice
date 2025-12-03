@@ -4,9 +4,6 @@ from datetime import datetime
 from .freshdesk_tools import get_ticket, get_ticket_description, get_ticket_conversations
 from .lakera_security_tool import check_content
 from .journey_helpers import extract_booking_info_from_note, triage_ticket
-# NOTE: detect_duplicate_bookings tool is NON-FUNCTIONAL due to ParkWhiz API limitations
-# from .detect_duplicate_bookings_tool import detect_duplicate_bookings  # DISABLED - API cannot search by email
-# from .parkwhiz_tools import get_customer_orders  # TODO: Re-enable after implementing parkwhiz_tools
 from .structured_logger import (
     configure_structured_logging,
     log_journey_start,
@@ -15,11 +12,8 @@ from .structured_logger import (
     log_decision_outcome,
     log_error_with_context
 )
-# Booking verification imports
 from .zapier_failure_detector import ZapierFailureDetector
 from .customer_info_extractor import CustomerInfoExtractor
-# NOTE: booking_verifier module removed - ParkWhiz API cannot search by email
-# from .booking_verifier import ParkWhizBookingVerifier
 from .decision_guard import DecisionGuard
 from .verification_note_generator import VerificationNoteGenerator
 
@@ -234,67 +228,16 @@ async def process_ticket_end_to_end(context: p.ToolContext, ticket_id: str) -> p
         
         if zapier_failure or invalid_booking_id:
             logger.info(
-                f"Zapier failure detected for ticket {ticket_id} - attempting booking verification",
+                f"Zapier failure detected for ticket {ticket_id} - booking verification disabled due to API limitations",
                 extra={
                     "ticket_id": ticket_id,
                     "zapier_failure": zapier_failure,
                     "invalid_booking_id": invalid_booking_id,
-                    "booking_id": booking_id
+                    "booking_id": booking_id,
+                    "reason": "ParkWhiz API cannot search bookings by customer email"
                 }
             )
-            results["steps_completed"].append("Detected Zapier failure - initiating booking verification")
-            
-            # Extract customer information
-            try:
-                customer_extractor = CustomerInfoExtractor()
-                customer_info = await customer_extractor.extract(notes_text)
-                
-                logger.info(
-                    f"Extracted customer info for ticket {ticket_id}",
-                    extra={
-                        "ticket_id": ticket_id,
-                        "has_email": bool(customer_info.email),
-                        "has_dates": bool(customer_info.arrival_date and customer_info.exit_date),
-                        "is_complete": customer_info.is_complete()
-                    }
-                )
-                
-                results["customer_info_extracted"] = {
-                    "email": customer_info.email,
-                    "has_dates": bool(customer_info.arrival_date and customer_info.exit_date),
-                    "is_complete": customer_info.is_complete()
-                }
-                results["steps_completed"].append("Extracted customer information")
-                
-                # NOTE: Booking verification disabled - ParkWhiz API cannot search by email
-                # Only attempt verification if customer info is complete
-                # if customer_info.is_complete():
-                #     # Verify booking using ParkWhiz API
-                #     verifier = ParkWhizBookingVerifier()
-                #     verification_result = await verifier.verify_booking(customer_info)
-                #     ...
-                # else:
-                #     # Customer info incomplete - cannot verify
-                #     ...
-                
-                # Skip verification - log that it's disabled
-                logger.info(
-                    f"Booking verification skipped for ticket {ticket_id} - feature disabled due to API limitations",
-                    extra={
-                        "ticket_id": ticket_id,
-                        "reason": "ParkWhiz API cannot search bookings by customer email"
-                    }
-                )
-                results["steps_completed"].append("Booking verification skipped (API limitation)")
-                    
-            except Exception as e:
-                logger.error(
-                    f"Error during booking verification for ticket {ticket_id}: {e}",
-                    extra={"ticket_id": ticket_id, "error": str(e)},
-                    exc_info=True
-                )
-                results["verification_error"] = str(e)
-                results["steps_completed"].append(f"Booking verification error: {type(e).__name__}")
+            results["steps_completed"].append("Zapier failure detected - verification unavailable (API limitation)")
         
         # Set booking info source based on verification
         if verified_booking:
@@ -305,14 +248,11 @@ async def process_ticket_end_to_end(context: p.ToolContext, ticket_id: str) -> p
             results["booking_info_source"] = "ticket_notes"
         
         # Step 6.5: Check for "paid again" / duplicate claims
-        # NOTE: Duplicate detection tool is NON-FUNCTIONAL due to ParkWhiz API limitations
-        # All duplicate claims must be escalated to human review
         duplicate_detection_result = None
         if _is_paid_again_claim(notes_text):
             logger.info(f"Detected duplicate/paid-again claim in ticket {ticket_id} - escalating to human review")
             results["steps_completed"].append("Detected duplicate claim - escalating per API limitation")
             
-            # Create escalation result (duplicate detection tool cannot work)
             duplicate_detection_result = type('obj', (object,), {
                 'data': {
                     "action_taken": "escalate",
@@ -322,7 +262,7 @@ async def process_ticket_end_to_end(context: p.ToolContext, ticket_id: str) -> p
                         "does not support searching bookings by customer email. "
                         "A specialist will review the account to locate both bookings."
                     ),
-                    "has_duplicates": None,  # Unknown - cannot detect
+                    "has_duplicates": None,
                     "api_limitation": True
                 }
             })()
