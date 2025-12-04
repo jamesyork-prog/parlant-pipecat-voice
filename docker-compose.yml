@@ -1,7 +1,7 @@
 services:
   postgres:
     image: postgres:15
-    container_name: parlant-postgres
+    container_name: whiz-database
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-WhizDB}
       POSTGRES_USER: ${POSTGRES_USER:-admin}
@@ -17,13 +17,14 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - parlant-network
+      - whiz-network
 
   parlant:
     build:
       context: ./parlant
       dockerfile: Dockerfile
-    container_name: parlant-server
+    image: whiz-agent
+    container_name: whiz-agent
     environment:
       LLM_PROVIDER: ${LLM_PROVIDER:-gemini}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
@@ -70,12 +71,12 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - parlant-network
+      - whiz-network
     restart: unless-stopped
 
 volumes:
   postgres_data:
 
 networks:
-  parlant-network:
+  whiz-network:
     driver: bridge

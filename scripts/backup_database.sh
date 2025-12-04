@@ -13,10 +13,10 @@ BACKUP_FILE="${BACKUP_DIR}/whizdb_backup_${TIMESTAMP}.sql"
 
 # Database credentials - detect current credentials from running container
 # This script works with BOTH old and new credentials
-if docker ps --format '{{.Names}}' | grep -q "^parlant-postgres$" 2>/dev/null; then
+if docker ps --format '{{.Names}}' | grep -q "^whiz-database$" 2>/dev/null; then
     # Get credentials from running container
-    DB_NAME=$(docker exec parlant-postgres env | grep "^POSTGRES_DB=" | cut -d'=' -f2)
-    DB_USER=$(docker exec parlant-postgres env | grep "^POSTGRES_USER=" | cut -d'=' -f2)
+    DB_NAME=$(docker exec whiz-database env | grep "^POSTGRES_DB=" | cut -d'=' -f2)
+    DB_USER=$(docker exec whiz-database env | grep "^POSTGRES_USER=" | cut -d'=' -f2)
     DB_HOST="${POSTGRES_HOST:-localhost}"
     DB_PORT="${POSTGRES_PORT:-5432}"
 else
@@ -72,7 +72,7 @@ if [ "$DOCKER_MODE" = true ]; then
         -f "${BACKUP_FILE}"
 else
     # Running on host - use docker exec
-    CONTAINER_NAME="parlant-postgres"
+    CONTAINER_NAME="whiz-database"
     
     # Check if container is running
     if ! docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then

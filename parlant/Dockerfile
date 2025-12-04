@@ -14,9 +14,9 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy patch script and apply it to fix Gemini model references
+# Copy patch script and apply it to fix Gemini model references (optional - may fail if parlant structure changes)
 COPY patch_gemini_model.py /tmp/patch_gemini_model.py
-RUN python /tmp/patch_gemini_model.py && rm /tmp/patch_gemini_model.py
+RUN python /tmp/patch_gemini_model.py || echo "⚠️  Patch script failed - continuing anyway" && rm -f /tmp/patch_gemini_model.py
 
 # Copy application code
 COPY . /app/app_tools
