@@ -636,13 +636,6 @@ After updating rules:
 
 MIT
 
-## Contributing
 
-Pull requests welcome! Please open an issue first to discuss changes.
 
-## Support
 
-For questions or issues:
-- Open an issue on GitHub
-- Review documentation in `.kiro/specs/`
-- Check troubleshooting section above
