@@ -7,7 +7,7 @@ This module tests the HMAC-SHA256 signature validation for Freshdesk webhooks.
 import pytest
 import hmac
 import hashlib
-from app_tools.tools.webhook_validator import validate_freshdesk_signature
+from app_tools.tools.infrastructure.webhook_validator import validate_freshdesk_signature
 
 
 class TestValidateFreshdeskSignature:

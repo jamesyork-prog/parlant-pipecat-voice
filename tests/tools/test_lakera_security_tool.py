@@ -1,7 +1,7 @@
 
 import pytest
 from unittest.mock import Mock, patch
-from parlant.tools.lakera_security_tool import check_content
+from app_tools.tools.integrations.lakera import check_content
 
 
 MOCK_LAKERA_API_KEY = "test_lakera_key"
@@ -10,7 +10,7 @@ MOCK_LAKERA_API_KEY = "test_lakera_key"
 @pytest.fixture
 def mock_env(monkeypatch):
     """Mock the Lakera API key environment variable."""
-    monkeypatch.setattr("parlant.tools.lakera_security_tool.LAKERA_API_KEY", MOCK_LAKERA_API_KEY)
+    monkeypatch.setattr("app_tools.tools.integrations.lakera.LAKERA_API_KEY", MOCK_LAKERA_API_KEY)
 
 
 @pytest.mark.asyncio
@@ -130,7 +130,7 @@ async def test_check_content_network_error(mock_env, httpx_mock):
 @pytest.mark.asyncio
 async def test_check_content_no_api_key(monkeypatch):
     """Test that check_content returns error when API key is not configured."""
-    monkeypatch.setattr("parlant.tools.lakera_security_tool.LAKERA_API_KEY", None)
+    monkeypatch.setattr("app_tools.tools.integrations.lakera.LAKERA_API_KEY", None)
     
     context = Mock()
     context.inputs = {"content": "Test"}

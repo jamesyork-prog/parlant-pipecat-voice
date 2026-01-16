@@ -1,0 +1,119 @@
+{
+  "_comment": "Classification Configuration Template - Copy to classification_config.json and customize",
+  
+  "version": "1.0",
+  
+  "confidence_thresholds": {
+    "_description": "Minimum confidence scores for automated decisions",
+    "webhook_automation": 0.85,
+    "interactive_chat": 0.70
+  },
+  
+  "tolerance_thresholds": {
+    "_description": "Time tolerance settings for parking scenarios",
+    "overstay_tolerance_minutes": 15,
+    "early_arrival_tolerance_minutes": 30
+  },
+  
+  "global_settings": {
+    "_description": "Global classification engine settings",
+    "enable_rule_logging": true,
+    "max_rules_per_scenario": 20,
+    "validation_strict_mode": true,
+    "rule_application_timeout_seconds": 5
+  },
+  
+  "scenario_rules": [
+    {
+      "_comment": "Example rule - Double Booking Detection",
+      "id": "double_booking_explicit",
+      "name": "Explicit Double Booking Language",
+      "scenario_type": "accidental_double_booking",
+      "patterns": [
+        "booked.*twice",
+        "double.*booking",
+        "accidentally.*booked.*again"
+      ],
+      "confidence_base": 0.9,
+      "confidence_boost": 0.05,
+      "priority": 10,
+      "enabled": true,
+      "description": "Customer explicitly mentions booking twice or double booking"
+    },
+    {
+      "_comment": "Example rule - Entry Failure Detection",
+      "id": "entry_failure_attendant",
+      "name": "Attendant Rejected Pass",
+      "scenario_type": "entry_failure_complete_unused",
+      "patterns": [
+        "attendant.*said.*(?:pass.*)?invalid",
+        "attendant.*rejected",
+        "staff.*said.*(?:pass.*)?(?:invalid|expired|not.*valid)"
+      ],
+      "confidence_base": 0.8,
+      "confidence_boost": 0.1,
+      "priority": 25,
+      "enabled": true,
+      "description": "Parking attendant rejected the pass at entry"
+    },
+    {
+      "_comment": "Example rule - Exit Complications",
+      "id": "exit_complication_success_then_failure",
+      "name": "Successful Entry with Exit Problems",
+      "scenario_type": "exit_complication_poor_experience",
+      "patterns": [
+        "got.*in.*(?:fine|ok).*but.*(?:exit|leaving).*(?:problem|issue)",
+        "entered.*garage.*but.*had.*to.*pay.*to.*(?:exit|leave)"
+      ],
+      "confidence_base": 0.9,
+      "confidence_boost": 0.05,
+      "priority": 30,
+      "enabled": true,
+      "description": "Customer successfully parked but had exit complications"
+    },
+    {
+      "_comment": "Example rule - No Parking Occurred",
+      "id": "no_parking_occurred",
+      "name": "No Parking Occurred",
+      "scenario_type": "no_parking_occurred",
+      "patterns": [
+        "never.*parked",
+        "didn't.*park",
+        "couldn't.*use.*(?:the.*)?parking"
+      ],
+      "confidence_base": 0.8,
+      "confidence_boost": 0.1,
+      "priority": 50,
+      "enabled": true,
+      "description": "Customer indicates no parking occurred at all"
+    },
+    {
+      "_comment": "Example rule - Contradiction Detection",
+      "id": "timeline_contradiction_parking_vs_no_parking",
+      "name": "Parking vs No Parking Contradiction",
+      "scenario_type": "contradictory_statements",
+      "patterns": [
+        "(?:couldn't|never).*park.*(?:retrieved|got).*(?:my|the).*car",
+        "(?:didn't|never).*use.*pass.*parked.*(?:for|during)"
+      ],
+      "confidence_base": 0.9,
+      "confidence_boost": 0.05,
+      "priority": 60,
+      "enabled": true,
+      "description": "Customer claims no parking but describes parking activities"
+    }
+  ],
+  
+  "_rule_schema": {
+    "_description": "Schema documentation for scenario_rules entries",
+    "id": "Unique identifier for the rule (string, required)",
+    "name": "Human-readable rule name (string, required)",
+    "scenario_type": "Classification category (string, required). Valid types: accidental_double_booking, entry_failure_complete_unused, exit_complication_poor_experience, early_arrival_analysis, no_parking_occurred, contradictory_statements",
+    "patterns": "Array of regex patterns to match (array of strings, required)",
+    "confidence_base": "Base confidence score when pattern matches (float 0-1, required)",
+    "confidence_boost": "Additional confidence when multiple patterns match (float 0-1, required)",
+    "priority": "Rule evaluation priority, lower = higher priority (integer, required)",
+    "enabled": "Whether rule is active (boolean, required)",
+    "description": "Human-readable description of what the rule detects (string, required)"
+  }
+}

@@ -16,9 +16,8 @@ import sys
 # Add the app_tools path
 sys.path.insert(0, '/app')
 
-from app_tools.tools.decision_maker import DecisionMaker
-from app_tools.tools.freshdesk_tools import get_ticket, get_ticket_description, add_note
-from app_tools.tools.journey_helpers import document_decision
+from app_tools.tools.refund_decision.decision_maker import DecisionMaker
+from app_tools.tools.integrations.freshdesk import get_ticket, get_ticket_description, add_note
 from unittest.mock import Mock
 
 # Test ticket ID

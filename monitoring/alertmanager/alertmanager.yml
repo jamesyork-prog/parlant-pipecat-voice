@@ -1,0 +1,68 @@
+global:
+  smtp_smarthost: 'localhost:587'
+  smtp_from: 'alerts@yourcompany.com'
+
+route:
+  group_by: ['alertname']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 1h
+  receiver: 'web.hook'
+  routes:
+  - match:
+      severity: critical
+    receiver: 'critical-alerts'
+  - match:
+      severity: warning
+    receiver: 'warning-alerts'
+
+receivers:
+- name: 'web.hook'
+  webhook_configs:
+  - url: 'http://127.0.0.1:5001/'
+
+- name: 'critical-alerts'
+  email_configs:
+  - to: 'ops-team@yourcompany.com'
+    subject: '🚨 CRITICAL: MOR/Product Type Router Alert'
+    body: |
+      Alert: {{ .GroupLabels.alertname }}
+      Severity: {{ .CommonLabels.severity }}
+      
+      {{ range .Alerts }}
+      Description: {{ .Annotations.description }}
+      {{ end }}
+      
+      Dashboard: http://localhost:3000/d/mor-product-type-router
+  
+  slack_configs:
+  - api_url: 'YOUR_SLACK_WEBHOOK_URL'
+    channel: '#ops-alerts'
+    title: '🚨 Critical Router Alert'
+    text: |
+      *Alert:* {{ .GroupLabels.alertname }}
+      *Severity:* {{ .CommonLabels.severity }}
+      {{ range .Alerts }}
+      *Description:* {{ .Annotations.description }}
+      {{ end }}
+
+- name: 'warning-alerts'
+  email_configs:
+  - to: 'dev-team@yourcompany.com'
+    subject: '⚠️ WARNING: MOR/Product Type Router Alert'
+    body: |
+      Alert: {{ .GroupLabels.alertname }}
+      Severity: {{ .CommonLabels.severity }}
+      
+      {{ range .Alerts }}
+      Description: {{ .Annotations.description }}
+      {{ end }}
+      
+      Dashboard: http://localhost:3000/d/mor-product-type-router
+
+inhibit_rules:
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'dev', 'instance']

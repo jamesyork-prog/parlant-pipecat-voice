@@ -1,0 +1,112 @@
+groups:
+  - name: webhook_orchestration_alerts
+    rules:
+      # Critical Alerts - Page immediately
+      - alert: WebhookResponseTimeHigh
+        expr: histogram_quantile(0.99, rate(webhook_response_time_ms_bucket[5m])) > 100
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Webhook response time p99 exceeds 100ms"
+          description: "Webhook p99 response time is {{ $value }}ms, exceeding the 100ms threshold for 5 minutes"
+
+      - alert: TaskFailureRateHigh
+        expr: rate(webhook_task_failures_total[5m]) / rate(webhook_tasks_total[5m]) > 0.10
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Task failure rate exceeds 10%"
+          description: "Task failure rate is {{ $value | humanizePercentage }}, exceeding 10% threshold for 5 minutes"
+
+      - alert: QueueDepthHigh
+        expr: webhook_queue_depth > 500
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Webhook queue depth exceeds 500 tasks"
+          description: "Queue depth is {{ $value }} tasks, exceeding critical threshold of 500"
+
+      - alert: AllWorkersDown
+        expr: webhook_active_workers == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "All webhook workers are unhealthy"
+          description: "No healthy workers available for task processing"
+
+      - alert: RedisUnavailable
+        expr: up{job="redis-master"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis master is unavailable"
+          description: "Redis master instance is down, affecting idempotency checks"
+
+      - alert: HatchetUnavailable
+        expr: up{job="hatchet-server"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Hatchet server is unavailable"
+          description: "Hatchet workflow orchestration server is down"
+
+      # Warning Alerts - Notify during business hours
+      - alert: WebhookResponseTimeWarning
+        expr: histogram_quantile(0.99, rate(webhook_response_time_ms_bucket[10m])) > 75
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Webhook response time p99 exceeds 75ms"
+          description: "Webhook p99 response time is {{ $value }}ms, exceeding the 75ms warning threshold"
+
+      - alert: TaskFailureRateWarning
+        expr: rate(webhook_task_failures_total[10m]) / rate(webhook_tasks_total[10m]) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Task failure rate exceeds 5%"
+          description: "Task failure rate is {{ $value | humanizePercentage }}, exceeding 5% warning threshold"
+
+      - alert: QueueDepthWarning
+        expr: webhook_queue_depth > 100
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Webhook queue depth exceeds 100 tasks"
+          description: "Queue depth is {{ $value }} tasks, exceeding warning threshold of 100 for 15 minutes"
+
+      - alert: DeadLetterQueueGrowing
+        expr: webhook_dead_letter_queue_size > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Dead letter queue has more than 10 tasks"
+          description: "Dead letter queue size is {{ $value }}, indicating recurring failures"
+
+      - alert: RetryRateHigh
+        expr: rate(webhook_task_retries_total[10m]) / rate(webhook_tasks_total[10m]) > 0.10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Task retry rate exceeds 10%"
+          description: "Task retry rate is {{ $value | humanizePercentage }}, indicating system instability"
+
+      - alert: RedisReplicaDown
+        expr: up{job="redis-replica"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis replica is unavailable"
+          description: "Redis replica instance is down, reducing redundancy"

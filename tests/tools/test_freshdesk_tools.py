@@ -1,16 +1,16 @@
 
 import pytest
 from unittest.mock import Mock
-from parlant.tools import freshdesk_tools
-from parlant.tools.freshdesk_tools import get_ticket, add_note, update_ticket
+from app_tools.tools.integrations import freshdesk
+from app_tools.tools.integrations.freshdesk import get_ticket, add_note, update_ticket
 
 MOCK_FRESHDESK_DOMAIN = "test.freshdesk.com"
 MOCK_FRESHDESK_API_KEY = "test_api_key"
 
 @pytest.fixture
 def mock_env(monkeypatch):
-    monkeypatch.setattr(freshdesk_tools, "FRESHDESK_DOMAIN", MOCK_FRESHDESK_DOMAIN)
-    monkeypatch.setattr(freshdesk_tools, "FRESHDESK_API_KEY", MOCK_FRESHDESK_API_KEY)
+    monkeypatch.setattr(freshdesk, "FRESHDESK_DOMAIN", MOCK_FRESHDESK_DOMAIN)
+    monkeypatch.setattr(freshdesk, "FRESHDESK_API_KEY", MOCK_FRESHDESK_API_KEY)
 
 
 @pytest.mark.asyncio
@@ -159,8 +159,8 @@ async def test_update_ticket_failure(mock_env, httpx_mock):
 
 @pytest.mark.asyncio
 async def test_get_ticket_no_credentials(monkeypatch):
-    monkeypatch.setattr(freshdesk_tools, "FRESHDESK_DOMAIN", None)
-    monkeypatch.setattr(freshdesk_tools, "FRESHDESK_API_KEY", None)
+    monkeypatch.setattr("app_tools.tools.integrations.freshdesk.FRESHDESK_DOMAIN", None)
+    monkeypatch.setattr("app_tools.tools.integrations.freshdesk.FRESHDESK_API_KEY", None)
     context = Mock()
     context.inputs = {"ticket_id": 123}
     result = await get_ticket(context)

@@ -4,7 +4,7 @@ import pytest
 import json
 import asyncio
 from unittest.mock import Mock, patch
-from app_tools.tools.llm_analyzer import LLMAnalyzer
+from app_tools.tools.booking_analysis.llm_analyzer import LLMAnalyzer
 
 
 @pytest.fixture

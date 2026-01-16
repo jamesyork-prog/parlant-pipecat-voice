@@ -3,7 +3,7 @@ import pytest
 from unittest.mock import Mock, AsyncMock, patch, call
 from datetime import datetime
 import psycopg2
-from app_tools.tools.database_logger import (
+from app_tools.tools.infrastructure.database import (
     log_audit_trail,
     log_run_metrics,
     log_refund_transaction,

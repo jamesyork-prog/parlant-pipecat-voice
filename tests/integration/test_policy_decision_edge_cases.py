@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 # Add the app_tools path
 sys.path.insert(0, '/app')
 
-from app_tools.tools.decision_maker import DecisionMaker
+from app_tools.tools.refund_decision.decision_maker import DecisionMaker
 
 
 async def test_edge_cases():

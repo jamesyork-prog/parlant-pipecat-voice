@@ -1,0 +1,40 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "rules/*.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'parlant-webhook-handler'
+    static_configs:
+      - targets: ['parlant:9091']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'redis-master'
+    static_configs:
+      - targets: ['redis-master:6379']
+
+  - job_name: 'redis-replica'
+    static_configs:
+      - targets: ['redis-replica:6379']
+
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres:5432']
+
+  - job_name: 'hatchet-server'
+    static_configs:
+      - targets: ['hatchet-server:8080']
+    metrics_path: '/api/v1/metrics'

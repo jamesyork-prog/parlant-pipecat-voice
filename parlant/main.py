@@ -25,23 +25,19 @@ parlant_logger.propagate = False  # Prevent duplicate logs
 logger = logging.getLogger(__name__)
 
 # Import all tools
-from app_tools.tools.freshdesk_tools import (
+from app_tools.tools.integrations.freshdesk import (
     get_ticket,
     get_ticket_description,
     get_ticket_conversations,
     add_note,
     update_ticket,
-    # booking_verifier,
-    # detect_duplicate_bookings_tool,
 )
-from app_tools.tools.database_logger import log_audit_trail, log_run_metrics, update_customer_context
-from app_tools.tools.lakera_security_tool import check_content
-from app_tools.tools.journey_helpers import extract_booking_info_from_note, triage_ticket
-from app_tools.tools.manual_trigger import trigger_ticket_processing
-from app_tools.tools.debug_ticket import debug_ticket_notes
-from app_tools.tools.parkwhiz_client import validate_oauth2_credentials
-# from app_tools.tools.booking_verifier import verify_booking_details
-# from app_tools.tools.detect_duplicate_bookings_tool import detect_duplicate_bookings
+from app_tools.tools.infrastructure.database import log_audit_trail, log_run_metrics, update_customer_context
+from app_tools.tools.integrations.lakera import check_content
+from app_tools.tools.ticket_processing.helpers import extract_booking_info_from_note, triage_ticket
+from app_tools.tools.ticket_processing.manual_trigger import trigger_ticket_processing
+
+from app_tools.tools.integrations.parkwhiz import validate_oauth2_credentials
 import uuid
 from datetime import datetime
 
@@ -157,100 +153,101 @@ async def create_interactive_processing_journey(agent: p.Agent):
         condition="No booking info found",
     )
     
-    # Triage from notes path
+    # Triage from both paths - but merge the results into a single decision flow
     t11_notes = await t10_found.target.transition_to(tool_state=triage_ticket)
+    t11_api = await t10_missing.target.transition_to(tool_state=triage_ticket)
     
-    # ParkWhiz fallback path - TODO: Re-enable after implementing parkwhiz_tools
-    # t11_api_fetch = await t10_missing.target.transition_to(tool_state=get_customer_orders)
-    # t12_api = await t11_api_fetch.target.transition_to(
-    #     chat_state="ParkWhiz data retrieved. Analyzing refund eligibility and continuing.",
-    # )
-    # t13_api = await t12_api.target.transition_to(tool_state=triage_ticket)
+    # Create a single decision handler that both triage paths feed into
+    # This eliminates the duplicate add_note calls by having only one decision flow
     
-    # Temporary: Skip ParkWhiz and go straight to triage
-    t13_api = await t10_missing.target.transition_to(tool_state=triage_ticket)
-    
-    # APPROVED path from notes
-    t14_app_n = await t11_notes.target.transition_to(
+    # APPROVED decision (single path for both sources)
+    t14_approved_notes = await t11_notes.target.transition_to(
         chat_state="Refund approved! Adding approval note and closing ticket.",
         condition="Decision is Approved",
     )
-    t15_app_n = await t14_app_n.target.transition_to(tool_state=add_note)
-    t16_app_n = await t15_app_n.target.transition_to(
-        chat_state="Note added. Closing ticket and completing process.",
-    )
-    t17_app_n = await t16_app_n.target.transition_to(tool_state=update_ticket)
-    await t17_app_n.target.transition_to(
-        chat_state="Process complete. Ticket has been updated and closed."
-    )
-    
-    # APPROVED path from API
-    t14_app_a = await t13_api.target.transition_to(
+    t14_approved_api = await t11_api.target.transition_to(
         chat_state="Refund approved! Adding approval note and closing ticket.",
         condition="Decision is Approved",
     )
-    t15_app_a = await t14_app_a.target.transition_to(tool_state=add_note)
-    t16_app_a = await t15_app_a.target.transition_to(
+    
+    # Single add_note call (no duplication)
+    t15_approved_notes = await t14_approved_notes.target.transition_to(tool_state=add_note)
+    t15_approved_api = await t14_approved_api.target.transition_to(tool_state=add_note)
+    
+    t16_approved_notes = await t15_approved_notes.target.transition_to(
         chat_state="Note added. Closing ticket and completing process.",
     )
-    t17_app_a = await t16_app_a.target.transition_to(tool_state=update_ticket)
-    await t17_app_a.target.transition_to(
+    t16_approved_api = await t15_approved_api.target.transition_to(
+        chat_state="Note added. Closing ticket and completing process.",
+    )
+    
+    t17_approved_notes = await t16_approved_notes.target.transition_to(tool_state=update_ticket)
+    t17_approved_api = await t16_approved_api.target.transition_to(tool_state=update_ticket)
+    
+    await t17_approved_notes.target.transition_to(
+        chat_state="Process complete. Ticket has been updated and closed."
+    )
+    await t17_approved_api.target.transition_to(
         chat_state="Process complete. Ticket has been updated and closed."
     )
     
-    # DENIED path from notes
-    t14_den_n = await t11_notes.target.transition_to(
+    # DENIED decision (single path for both sources)
+    t14_denied_notes = await t11_notes.target.transition_to(
         chat_state="Refund denied per policy. Adding explanation note and updating ticket.",
         condition="Decision is Denied",
     )
-    t15_den_n = await t14_den_n.target.transition_to(tool_state=add_note)
-    t16_den_n = await t15_den_n.target.transition_to(
-        chat_state="Note added. Updating ticket status and completing process.",
-    )
-    t17_den_n = await t16_den_n.target.transition_to(tool_state=update_ticket)
-    await t17_den_n.target.transition_to(
-        chat_state="Process complete. Ticket has been updated with denial."
-    )
-    
-    # DENIED path from API
-    t14_den_a = await t13_api.target.transition_to(
+    t14_denied_api = await t11_api.target.transition_to(
         chat_state="Refund denied per policy. Adding explanation note and updating ticket.",
         condition="Decision is Denied",
     )
-    t15_den_a = await t14_den_a.target.transition_to(tool_state=add_note)
-    t16_den_a = await t15_den_a.target.transition_to(
+    
+    t15_denied_notes = await t14_denied_notes.target.transition_to(tool_state=add_note)
+    t15_denied_api = await t14_denied_api.target.transition_to(tool_state=add_note)
+    
+    t16_denied_notes = await t15_denied_notes.target.transition_to(
         chat_state="Note added. Updating ticket status and completing process.",
     )
-    t17_den_a = await t16_den_a.target.transition_to(tool_state=update_ticket)
-    await t17_den_a.target.transition_to(
+    t16_denied_api = await t15_denied_api.target.transition_to(
+        chat_state="Note added. Updating ticket status and completing process.",
+    )
+    
+    t17_denied_notes = await t16_denied_notes.target.transition_to(tool_state=update_ticket)
+    t17_denied_api = await t16_denied_api.target.transition_to(tool_state=update_ticket)
+    
+    await t17_denied_notes.target.transition_to(
+        chat_state="Process complete. Ticket has been updated with denial."
+    )
+    await t17_denied_api.target.transition_to(
         chat_state="Process complete. Ticket has been updated with denial."
     )
     
-    # ESCALATE path from notes
-    t14_esc_n = await t11_notes.target.transition_to(
+    # ESCALATE decision (single path for both sources)
+    t14_escalate_notes = await t11_notes.target.transition_to(
         chat_state="Case requires human review. Adding escalation note and assigning to agent.",
         condition="Decision is Needs Human Review",
     )
-    t15_esc_n = await t14_esc_n.target.transition_to(tool_state=add_note)
-    t16_esc_n = await t15_esc_n.target.transition_to(
+    t14_escalate_api = await t11_api.target.transition_to(
+        chat_state="Case requires human review. Adding escalation note and assigning to agent.",
+        condition="Decision is Needs Human Review",
+    )
+    
+    t15_escalate_notes = await t14_escalate_notes.target.transition_to(tool_state=add_note)
+    t15_escalate_api = await t14_escalate_api.target.transition_to(tool_state=add_note)
+    
+    t16_escalate_notes = await t15_escalate_notes.target.transition_to(
         chat_state="Note added. Assigning to human agent and completing process.",
     )
-    t17_esc_n = await t16_esc_n.target.transition_to(tool_state=update_ticket)
-    await t17_esc_n.target.transition_to(
+    t16_escalate_api = await t15_escalate_api.target.transition_to(
+        chat_state="Note added. Assigning to human agent and completing process.",
+    )
+    
+    t17_escalate_notes = await t16_escalate_notes.target.transition_to(tool_state=update_ticket)
+    t17_escalate_api = await t16_escalate_api.target.transition_to(tool_state=update_ticket)
+    
+    await t17_escalate_notes.target.transition_to(
         chat_state="Process complete. Ticket escalated to human agent."
     )
-    
-    # ESCALATE path from API
-    t14_esc_a = await t13_api.target.transition_to(
-        chat_state="Case requires human review. Adding escalation note and assigning to agent.",
-        condition="Decision is Needs Human Review",
-    )
-    t15_esc_a = await t14_esc_a.target.transition_to(tool_state=add_note)
-    t16_esc_a = await t15_esc_a.target.transition_to(
-        chat_state="Note added. Assigning to human agent and completing process.",
-    )
-    t17_esc_a = await t16_esc_a.target.transition_to(tool_state=update_ticket)
-    await t17_esc_a.target.transition_to(
+    await t17_escalate_api.target.transition_to(
         chat_state="Process complete. Ticket escalated to human agent."
     )
     

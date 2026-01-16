@@ -22,7 +22,7 @@ import pytest
 sys.path.insert(0, '/app')
 
 import parlant.sdk as p
-from app_tools.tools.process_ticket_workflow import process_ticket_end_to_end, _is_paid_again_claim
+from app_tools.tools.ticket_processing.ticket_automation_engine import process_ticket_end_to_end, _is_paid_again_claim
 
 
 # ============================================================================

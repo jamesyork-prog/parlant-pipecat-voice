@@ -13,17 +13,10 @@ Requirements: All requirements end-to-end
 """
 
 import pytest
-import asyncio
-from unittest.mock import Mock, patch, AsyncMock
-from app_tools.tools.zapier_failure_detector import ZapierFailureDetector
-from app_tools.tools.customer_info_extractor import CustomerInfo, CustomerInfoExtractor
-from app_tools.tools.booking_verifier import (
-    VerifiedBooking, 
-    BookingVerificationResult,
-    ParkWhizBookingVerifier
-)
-from app_tools.tools.decision_guard import DecisionGuard
-from app_tools.tools.parkwhiz_client import ParkWhizTimeoutError, ParkWhizAuthenticationError
+
+# Skip all tests in this file - workflow is deprecated
+# Booking verification now happens upstream in Zapier, not in Parlant
+pytestmark = pytest.mark.skip(reason="Booking verification now happens upstream in Zapier")
 
 
 # ============================================================================

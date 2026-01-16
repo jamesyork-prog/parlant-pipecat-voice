@@ -1,0 +1,77 @@
+groups:
+  - name: mor_product_type_router
+    rules:
+      # Performance degradation alerts
+      - alert: MORGateHighLatency
+        expr: router_mor_gate_processing_time_ms_p95 > 20
+        for: 5m
+        labels:
+          severity: warning
+          component: mor_gate
+        annotations:
+          summary: "MOR Gate processing time exceeds target"
+          description: "MOR Gate 95th percentile processing time is {{ $value }}ms, exceeding the 20ms target"
+
+      - alert: ProductTypeGateHighLatency
+        expr: router_product_type_gate_processing_time_ms_p95 > 50
+        for: 5m
+        labels:
+          severity: warning
+          component: product_type_gate
+        annotations:
+          summary: "Product Type Gate processing time exceeds target"
+          description: "Product Type Gate 95th percentile processing time is {{ $value }}ms, exceeding the 50ms target"
+
+      - alert: CombinedGatesHighLatency
+        expr: router_combined_gates_processing_time_ms_p95 > 100
+        for: 5m
+        labels:
+          severity: critical
+          component: combined_gates
+        annotations:
+          summary: "Combined gates processing time exceeds target"
+          description: "Combined gates 95th percentile processing time is {{ $value }}ms, exceeding the 100ms target"
+
+      # High unknown partner rate
+      - alert: HighUnknownPartnerRate
+        expr: (router_mor_gate_unknown_partner_total / router_mor_gate_total_processed_total) * 100 > 5
+        for: 10m
+        labels:
+          severity: warning
+          component: mor_gate
+        annotations:
+          summary: "High rate of unknown Partner values"
+          description: "{{ $value }}% of tickets have unknown Partner values, exceeding 5% threshold"
+
+      # Data quality issues
+      - alert: HighDurationCalculationFailureRate
+        expr: (router_product_type_gate_duration_failures_total / router_product_type_gate_total_processed_total) * 100 > 10
+        for: 10m
+        labels:
+          severity: warning
+          component: product_type_gate
+        annotations:
+          summary: "High rate of duration calculation failures"
+          description: "{{ $value }}% of tickets have duration calculation failures, exceeding 10% threshold"
+
+      # Cost savings monitoring
+      - alert: LowRejectionRate
+        expr: (router_total_rejections_total / router_total_processed_total) * 100 < 15
+        for: 30m
+        labels:
+          severity: info
+          component: router_efficiency
+        annotations:
+          summary: "Router rejection rate below expected range"
+          description: "Router rejection rate is {{ $value }}%, below expected 20-30% range"
+
+      # System health
+      - alert: RouterMetricsDown
+        expr: up{job="router-metrics"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: monitoring
+        annotations:
+          summary: "Router metrics exporter is down"
+          description: "Cannot collect router metrics - monitoring system may be offline"

@@ -10,7 +10,7 @@ Tests cover:
 """
 
 import pytest
-from app_tools.tools.booking_patterns import PatternExtractor
+from app_tools.tools.booking_analysis.patterns import PatternExtractor
 
 
 @pytest.fixture

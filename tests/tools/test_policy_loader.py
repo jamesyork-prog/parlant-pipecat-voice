@@ -12,7 +12,7 @@ import pytest
 import os
 import json
 from unittest.mock import patch, mock_open, MagicMock
-from app_tools.tools.policy_loader import PolicyLoader
+from app_tools.tools.refund_decision.policy_loader import PolicyLoader
 
 
 @pytest.fixture

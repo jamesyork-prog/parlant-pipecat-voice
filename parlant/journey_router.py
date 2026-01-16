@@ -10,10 +10,10 @@ import logging
 from typing import Literal
 
 # Import structured logging
-from app_tools.tools.structured_logger import configure_structured_logging
+from app_tools.tools.infrastructure.logging import configure_structured_logging
 
 # Import metrics tracking
-from app_tools.tools.metrics_tracker import get_metrics_tracker
+from app_tools.tools.infrastructure.metrics import get_metrics_tracker
 
 # Configure structured logging
 logger = configure_structured_logging(

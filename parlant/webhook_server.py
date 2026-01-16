@@ -16,12 +16,12 @@ from fastapi import FastAPI, Request, HTTPException, status
 from pydantic import BaseModel, Field
 
 # Import webhook validator and journey router
-from app_tools.tools.webhook_validator import validate_freshdesk_signature
+from app_tools.tools.infrastructure.webhook_validator import validate_freshdesk_signature
 from app_tools.journey_router import route_to_journey
-from app_tools.tools.journey_activator import activate_journey
+from app_tools.tools.ticket_processing.activator import activate_journey
 
 # Import structured logging
-from app_tools.tools.structured_logger import (
+from app_tools.tools.infrastructure.logging import (
     configure_structured_logging,
     log_webhook_received,
     log_signature_validation,
@@ -32,10 +32,10 @@ from app_tools.tools.structured_logger import (
 )
 
 # Import metrics tracking
-from app_tools.tools.metrics_tracker import get_metrics_tracker
+from app_tools.tools.infrastructure.metrics import get_metrics_tracker
 
 # Import webhook configuration
-from app_tools.tools.webhook_config import get_validated_config
+from app_tools.tools.infrastructure.webhook_config import get_validated_config
 
 # Load and validate configuration
 webhook_config = get_validated_config()
@@ -272,7 +272,7 @@ async def get_metrics():
     
     # Log any alerts
     if alerts:
-        from app_tools.tools.structured_logger import log_error_rate_alert
+        from app_tools.tools.infrastructure.logging import log_error_rate_alert
         for alert in alerts:
             log_error_rate_alert(
                 logger,
@@ -523,8 +523,7 @@ async def handle_freshdesk_webhook(request: Request):
                         "error": error_detail
                     }
                 )
-                # Also log to console for visibility
-                print(f"❌ Journey activation failed for ticket {ticket_id}: {error_detail}")
+                # Error already logged above
         except Exception as e:
             logger.error(
                 "Journey activation exception",

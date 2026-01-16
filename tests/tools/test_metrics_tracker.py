@@ -6,7 +6,7 @@ webhook processing and journey execution.
 """
 
 import pytest
-from app_tools.tools.metrics_tracker import (
+from app_tools.tools.infrastructure.metrics import (
     MetricsTracker,
     ProcessingTimeMetrics,
     PerformanceTimer,

@@ -1,0 +1,82 @@
+{
+  "_comment": "Router Configuration Template - Copy to router_config.json and customize",
+  
+  "mor_gate": {
+    "_description": "Merchant of Record gate configuration",
+    "third_party_vendors": [
+      "axs",
+      "seatgeek",
+      "stubhub",
+      "ticketmaster",
+      "ticketnetwork",
+      "gametime",
+      "vividseats"
+    ],
+    "parkwhiz_partners": [
+      "parkwhiz",
+      "google",
+      "waze",
+      "apple"
+    ],
+    "special_partners": {
+      "_description": "Partners with special handling rules",
+      "groupon": "groupon_credit_only"
+    }
+  },
+  
+  "product_type_gate": {
+    "_description": "Product type classification settings",
+    "on_demand_threshold_hours": 4,
+    "season_package_detection": "future_implementation"
+  },
+  
+  "pre_arrival_gate": {
+    "_description": "Pre-arrival detection and processing settings",
+    "target_processing_ms": 200,
+    "optimized_path_ms": 100,
+    
+    "date_parser": {
+      "_description": "Supported date formats for parsing booking times",
+      "date_formats": [
+        "%A %b %d, %Y, %I:%M %p",
+        "%Y-%m-%dT%H:%M:%S",
+        "%m/%d/%Y %I:%M %p",
+        "%b %d, %Y %I:%M:%S %p",
+        "%Y-%m-%d %H:%M:%S"
+      ]
+    },
+    
+    "timezone_handler": {
+      "_description": "City to timezone mappings for accurate time comparison",
+      "city_to_timezone_mapping": {
+        "new york, ny": "America/New_York",
+        "new york": "America/New_York",
+        "los angeles, ca": "America/Los_Angeles",
+        "los angeles": "America/Los_Angeles",
+        "chicago, il": "America/Chicago",
+        "chicago": "America/Chicago",
+        "denver, co": "America/Denver",
+        "phoenix, az": "America/Phoenix",
+        "seattle, wa": "America/Los_Angeles",
+        "miami, fl": "America/New_York",
+        "atlanta, ga": "America/New_York",
+        "boston, ma": "America/New_York"
+      }
+    },
+    
+    "comparator": {
+      "_description": "Time comparison validation settings",
+      "max_future_months": 12,
+      "max_past_days": 7
+    }
+  },
+  
+  "router_settings": {
+    "_description": "Global router behavior settings",
+    "enable_hot_reload": true,
+    "config_check_interval_seconds": 30,
+    "performance_monitoring": true,
+    "enable_mor_product_type_gates": true,
+    "enable_pre_arrival_gate": true
+  }
+}
