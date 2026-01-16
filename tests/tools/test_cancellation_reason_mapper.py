@@ -10,7 +10,7 @@ Tests cover:
 """
 
 import pytest
-from app_tools.tools.cancellation_reason_mapper import CancellationReasonMapper
+from app_tools.tools.utils.cancellation_mapper import CancellationReasonMapper
 
 
 @pytest.fixture

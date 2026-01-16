@@ -14,7 +14,7 @@ Tests cover:
 import pytest
 import json
 from unittest.mock import Mock, patch, AsyncMock
-from app_tools.tools.booking_extractor import BookingExtractor
+from app_tools.tools.booking_analysis.extractor import BookingExtractor
 
 
 @pytest.fixture

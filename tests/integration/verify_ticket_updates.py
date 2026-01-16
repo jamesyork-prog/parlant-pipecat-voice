@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Verify that ticket 1206331 was actually updated in Freshdesk.
+Verify that a ticket was actually updated in Freshdesk.
 """
 
 import asyncio
@@ -17,8 +17,8 @@ async def verify_ticket_updates():
     print("=" * 80)
     print()
     
-    ticket_id = "1206331"
-    domain = os.getenv("FRESHDESK_DOMAIN", "parkonectcare.freshdesk.com")
+    ticket_id = os.getenv("TEST_TICKET_ID", "1234567")
+    domain = os.getenv("FRESHDESK_DOMAIN", "your-domain.freshdesk.com")
     api_key = os.getenv("FRESHDESK_API_KEY")
     
     if not api_key:

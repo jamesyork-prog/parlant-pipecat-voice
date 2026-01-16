@@ -2,6 +2,28 @@
 -- Agent Logging Tables
 -- ============================================================
 
+-- LLM Audit Log Table: Track all LLM interactions for debugging and compliance
+CREATE TABLE IF NOT EXISTS llm_audit_log (
+    id SERIAL PRIMARY KEY,
+    timestamp TIMESTAMPTZ DEFAULT NOW(),
+    ticket_id VARCHAR(255) NOT NULL,
+    model_name VARCHAR(100),
+    prompt_text TEXT,
+    response_text TEXT,
+    decision VARCHAR(50),
+    confidence VARCHAR(20),
+    policy_applied VARCHAR(255),
+    processing_time_ms INTEGER,
+    error_message TEXT,
+    metadata JSONB
+);
+
+-- Indexes for llm_audit_log
+CREATE INDEX IF NOT EXISTS idx_llm_audit_ticket_id ON llm_audit_log(ticket_id);
+CREATE INDEX IF NOT EXISTS idx_llm_audit_timestamp ON llm_audit_log(timestamp);
+CREATE INDEX IF NOT EXISTS idx_llm_audit_decision ON llm_audit_log(decision);
+CREATE INDEX IF NOT EXISTS idx_llm_audit_model ON llm_audit_log(model_name);
+
 -- The Audit Trail Table: A detailed, step-by-step log of every action
 CREATE TABLE IF NOT EXISTS agent_audit_log (
     log_id SERIAL PRIMARY KEY,
@@ -179,6 +201,127 @@ CREATE TABLE IF NOT EXISTS agent_journey_steps (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- ============================================================
+-- Async Webhook Orchestration Tables
+-- ============================================================
+
+-- Webhook Tasks Table: Track async webhook processing tasks
+CREATE TABLE IF NOT EXISTS webhook_tasks (
+    task_id VARCHAR(255) PRIMARY KEY,
+    hatchet_workflow_id VARCHAR(255),
+    payload_hash VARCHAR(64) NOT NULL,
+    webhook_payload JSONB NOT NULL,
+    
+    -- Task metadata
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    
+    -- Status tracking
+    status VARCHAR(50) DEFAULT 'pending', -- 'pending', 'processing', 'completed', 'failed', 'dead_letter'
+    retry_count INTEGER DEFAULT 0,
+    max_retries INTEGER DEFAULT 5,
+    
+    -- Processing details
+    worker_id VARCHAR(255),
+    processing_path VARCHAR(50), -- 'fast_path', 'llm_pipeline'
+    processing_time_ms INTEGER,
+    
+    -- Results
+    decision_result JSONB,
+    error_message TEXT,
+    error_type VARCHAR(50), -- 'transient', 'permanent'
+    
+    -- Freshdesk integration
+    ticket_id VARCHAR(255),
+    freshdesk_updated BOOLEAN DEFAULT FALSE,
+    freshdesk_update_attempts INTEGER DEFAULT 0,
+    
+    -- Audit trail
+    trace_id VARCHAR(255),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Dead Letter Queue Table: Store unrecoverable failed tasks
+CREATE TABLE IF NOT EXISTS webhook_dead_letter_queue (
+    dlq_id SERIAL PRIMARY KEY,
+    task_id VARCHAR(255) REFERENCES webhook_tasks(task_id),
+    original_payload JSONB NOT NULL,
+    failure_reason TEXT NOT NULL,
+    failure_type VARCHAR(50) NOT NULL, -- 'max_retries_exceeded', 'permanent_failure'
+    
+    -- Failure context
+    last_error_message TEXT,
+    retry_history JSONB, -- Array of retry attempts with timestamps and errors
+    total_retry_count INTEGER,
+    
+    -- Resolution tracking
+    resolved BOOLEAN DEFAULT FALSE,
+    resolved_at TIMESTAMPTZ,
+    resolved_by VARCHAR(255),
+    resolution_notes TEXT,
+    
+    -- Metadata
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Task Metrics Table: Performance and monitoring data
+CREATE TABLE IF NOT EXISTS webhook_task_metrics (
+    metric_id SERIAL PRIMARY KEY,
+    task_id VARCHAR(255) REFERENCES webhook_tasks(task_id),
+    
+    -- Timing metrics (milliseconds)
+    webhook_response_time_ms INTEGER,
+    idempotency_check_time_ms INTEGER,
+    task_creation_time_ms INTEGER,
+    queue_wait_time_ms INTEGER,
+    processing_time_ms INTEGER,
+    freshdesk_update_time_ms INTEGER,
+    total_time_ms INTEGER,
+    
+    -- Resource usage
+    redis_operations_count INTEGER DEFAULT 0,
+    database_operations_count INTEGER DEFAULT 0,
+    api_calls_count INTEGER DEFAULT 0,
+    
+    -- Quality metrics
+    fast_path_used BOOLEAN DEFAULT FALSE,
+    llm_calls_count INTEGER DEFAULT 0,
+    llm_total_time_ms INTEGER DEFAULT 0,
+    
+    -- Error tracking
+    transient_errors_count INTEGER DEFAULT 0,
+    permanent_errors_count INTEGER DEFAULT 0,
+    
+    -- Metadata
+    recorded_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Idempotency Audit Table: Track idempotency key usage
+CREATE TABLE IF NOT EXISTS idempotency_audit (
+    audit_id SERIAL PRIMARY KEY,
+    payload_hash VARCHAR(64) NOT NULL,
+    task_id VARCHAR(255),
+    
+    -- Request details
+    first_seen_at TIMESTAMPTZ DEFAULT NOW(),
+    last_seen_at TIMESTAMPTZ DEFAULT NOW(),
+    duplicate_count INTEGER DEFAULT 1,
+    
+    -- TTL tracking
+    expires_at TIMESTAMPTZ,
+    expired BOOLEAN DEFAULT FALSE,
+    
+    -- Source tracking
+    source_ip VARCHAR(45),
+    user_agent TEXT,
+    
+    -- Metadata
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Create indexes for agent logging tables
 CREATE INDEX idx_audit_log_run_id ON agent_audit_log(run_id);
 CREATE INDEX idx_audit_log_timestamp ON agent_audit_log(timestamp);
@@ -204,6 +347,27 @@ CREATE INDEX idx_journey_steps_run_id ON agent_journey_steps(run_id);
 CREATE INDEX idx_journey_steps_name ON agent_journey_steps(step_name);
 CREATE INDEX idx_journey_steps_status ON agent_journey_steps(status);
 CREATE INDEX idx_journey_steps_created_at ON agent_journey_steps(created_at);
+
+-- Indexes for async webhook orchestration tables
+CREATE INDEX idx_webhook_tasks_status ON webhook_tasks(status);
+CREATE INDEX idx_webhook_tasks_created_at ON webhook_tasks(created_at);
+CREATE INDEX idx_webhook_tasks_payload_hash ON webhook_tasks(payload_hash);
+CREATE INDEX idx_webhook_tasks_ticket_id ON webhook_tasks(ticket_id);
+CREATE INDEX idx_webhook_tasks_trace_id ON webhook_tasks(trace_id);
+CREATE INDEX idx_webhook_tasks_worker_id ON webhook_tasks(worker_id);
+
+CREATE INDEX idx_dlq_task_id ON webhook_dead_letter_queue(task_id);
+CREATE INDEX idx_dlq_resolved ON webhook_dead_letter_queue(resolved);
+CREATE INDEX idx_dlq_created_at ON webhook_dead_letter_queue(created_at);
+CREATE INDEX idx_dlq_failure_type ON webhook_dead_letter_queue(failure_type);
+
+CREATE INDEX idx_task_metrics_task_id ON webhook_task_metrics(task_id);
+CREATE INDEX idx_task_metrics_recorded_at ON webhook_task_metrics(recorded_at);
+
+CREATE INDEX idx_idempotency_payload_hash ON idempotency_audit(payload_hash);
+CREATE INDEX idx_idempotency_expires_at ON idempotency_audit(expires_at);
+CREATE INDEX idx_idempotency_expired ON idempotency_audit(expired);
+CREATE INDEX idx_idempotency_first_seen ON idempotency_audit(first_seen_at);
 
 
 -- ============================================================

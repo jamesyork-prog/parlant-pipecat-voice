@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import Mock
-from app_tools.tools.journey_helpers import document_decision
+from app_tools.tools.ticket_processing.helpers import document_decision
 import parlant.sdk as p
 
 @pytest.fixture

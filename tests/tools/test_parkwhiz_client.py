@@ -11,7 +11,7 @@ import os
 from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
 import httpx
-from app_tools.tools.parkwhiz_client import (
+from app_tools.tools.integrations.parkwhiz import (
     ParkWhizOAuth2Client,
     ParkWhizError,
     ParkWhizAuthenticationError,

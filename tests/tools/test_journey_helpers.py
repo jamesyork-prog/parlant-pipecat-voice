@@ -1,7 +1,7 @@
 
 import pytest
 from unittest.mock import Mock, AsyncMock, patch
-from app_tools.tools.journey_helpers import extract_booking_info_from_note, triage_ticket
+from app_tools.tools.ticket_processing.helpers import extract_booking_info_from_note, triage_ticket
 
 
 @pytest.mark.asyncio
@@ -83,7 +83,7 @@ async def test_triage_ticket_approved():
         "processing_time_ms": 150
     }
     
-    with patch('app_tools.tools.journey_helpers.DecisionMaker') as MockDecisionMaker:
+    with patch('app_tools.tools.ticket_processing.helpers.DecisionMaker') as MockDecisionMaker:
         mock_instance = MockDecisionMaker.return_value
         mock_instance.make_decision = AsyncMock(return_value=mock_decision)
         
@@ -130,7 +130,7 @@ async def test_triage_ticket_denied():
         "processing_time_ms": 120
     }
     
-    with patch('app_tools.tools.journey_helpers.DecisionMaker') as MockDecisionMaker:
+    with patch('app_tools.tools.ticket_processing.helpers.DecisionMaker') as MockDecisionMaker:
         mock_instance = MockDecisionMaker.return_value
         mock_instance.make_decision = AsyncMock(return_value=mock_decision)
         
@@ -169,7 +169,7 @@ async def test_triage_ticket_needs_review():
         "processing_time_ms": 200
     }
     
-    with patch('app_tools.tools.journey_helpers.DecisionMaker') as MockDecisionMaker:
+    with patch('app_tools.tools.ticket_processing.helpers.DecisionMaker') as MockDecisionMaker:
         mock_instance = MockDecisionMaker.return_value
         mock_instance.make_decision = AsyncMock(return_value=mock_decision)
         
@@ -245,7 +245,7 @@ async def test_triage_ticket_with_policy_context():
         "processing_time_ms": 350
     }
     
-    with patch('app_tools.tools.journey_helpers.DecisionMaker') as MockDecisionMaker:
+    with patch('app_tools.tools.ticket_processing.helpers.DecisionMaker') as MockDecisionMaker:
         mock_instance = MockDecisionMaker.return_value
         mock_instance.make_decision = AsyncMock(return_value=mock_decision)
         

@@ -9,7 +9,7 @@ This directory contains integration tests that verify the complete ticket proces
 
 **What it tests:**
 - Session creation
-- Message sending ("Process ticket 1206331")
+- Message sending ("Process ticket <ticket_id>")
 - Tool execution monitoring
 - Workflow completion verification
 
@@ -63,7 +63,7 @@ done
 
 ## Test Ticket
 
-All tests use **ticket 1206331** which contains:
+All tests use a configurable test ticket (set via `TEST_TICKET_ID` environment variable) which should contain:
 - Complete booking information in description
 - Test markers in subject ("TEST - IGNORE")
 - Known structure for consistent testing
@@ -78,7 +78,7 @@ All tests use **ticket 1206331** which contains:
 ## Policy-Based Decision Tests
 
 ### test_policy_decision_real_ticket.py
-**Purpose:** Tests the complete policy-based decision workflow with real ticket 1206331.
+**Purpose:** Tests the complete policy-based decision workflow with a real ticket.
 
 **What it tests:**
 - Booking information extraction from ticket notes

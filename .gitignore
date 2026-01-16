@@ -84,3 +84,41 @@ test_*.py
 *.tmp
 *.temp
 .cache/
+
+# ============================================
+# SENSITIVE BUSINESS CONTENT - DO NOT COMMIT
+# ============================================
+
+# Policy & Business Rules Documentation
+parlant/context/
+parlant/cache_config.json
+
+# Refund Decision Configuration (contains business rules)
+parlant/tools/refund_decision/classification_config.json
+parlant/tools/refund_decision/example_contradiction_config.json
+
+# Router Configuration (contains vendor lists, thresholds)
+parlant/tools/routing/router_config.json
+parlant/tools/routing/config_examples/
+
+# ============================================
+# ARCHIVED & NON-PRODUCTION CONTENT
+# ============================================
+
+# Archived completed specs
+.kiro/specs/_completed/
+
+# Archived planning documents
+.kiro/specs/_archive/
+
+# Archived test summaries and reports
+docs/archive/
+
+# Development/test scripts (not production)
+scripts/dev/
+
+# Example code files (not production)
+docs/examples/
+
+# Operational documentation (internal use only)
+docs/operations/

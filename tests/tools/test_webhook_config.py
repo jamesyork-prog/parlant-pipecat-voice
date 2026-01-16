@@ -7,7 +7,7 @@ This module tests the webhook configuration loading, validation, and error handl
 import pytest
 import os
 from unittest.mock import patch
-from app_tools.tools.webhook_config import (
+from app_tools.tools.infrastructure.webhook_config import (
     load_webhook_config,
     validate_webhook_config,
     get_validated_config,

@@ -19,6 +19,121 @@ services:
     networks:
       - whiz-network
 
+  # Redis cluster for idempotency storage
+  redis-master:
+    image: redis:7-alpine
+    container_name: whiz-redis-master
+    command: redis-server --appendonly yes --replica-read-only no
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_master_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - whiz-network
+
+  redis-replica:
+    image: redis:7-alpine
+    container_name: whiz-redis-replica
+    command: redis-server --appendonly yes --replicaof redis-master 6379
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_replica_data:/data
+    depends_on:
+      redis-master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - whiz-network
+
+  # Hatchet workflow orchestration
+  hatchet-postgres:
+    image: postgres:15
+    container_name: whiz-hatchet-db
+    environment:
+      POSTGRES_DB: hatchet
+      POSTGRES_USER: hatchet
+      POSTGRES_PASSWORD: ${HATCHET_DB_PASSWORD:-hatchet}
+    ports:
+      - "5433:5432"
+    volumes:
+      - hatchet_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hatchet"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - whiz-network
+
+  hatchet-server:
+    image: ghcr.io/hatchet-dev/hatchet/hatchet-api:latest
+    container_name: whiz-hatchet-server
+    environment:
+      DATABASE_URL: postgres://hatchet:${HATCHET_DB_PASSWORD:-hatchet}@hatchet-postgres:5432/hatchet?sslmode=disable
+      SERVER_ENCRYPTION_KEY: ${HATCHET_ENCRYPTION_KEY:-your-32-char-encryption-key-here12}
+      SERVER_AUTH_COOKIE_SECRETS: "secret1,secret2"
+      SERVER_AUTH_COOKIE_DOMAIN: localhost
+      SERVER_AUTH_COOKIE_INSECURE: "true"
+      SERVER_GRPC_PORT: 7070
+      SERVER_HTTP_PORT: 8080
+    ports:
+      - "7070:7070"
+      - "8080:8080"
+    depends_on:
+      hatchet-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - whiz-network
+
+  # Monitoring infrastructure
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: whiz-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./monitoring/prometheus/rules:/etc/prometheus/rules
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - whiz-network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: whiz-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    networks:
+      - whiz-network
+
   parlant:
     build:
       context: ./parlant
@@ -33,12 +148,34 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash-exp}
 
+      # --- Gemini Context Caching Configuration ---
+      GEMINI_CACHE_ENABLED: ${GEMINI_CACHE_ENABLED:-true}
+      GEMINI_CACHE_MONITOR: ${GEMINI_CACHE_MONITOR:-true}
+      GEMINI_CACHE_INPUT_COST: ${GEMINI_CACHE_INPUT_COST:-0.30}
+      GEMINI_CACHE_CACHED_COST: ${GEMINI_CACHE_CACHED_COST:-0.03}
+      GEMINI_CACHE_OUTPUT_COST: ${GEMINI_CACHE_OUTPUT_COST:-2.50}
+      GEMINI_CACHE_MAX_TOKENS: ${GEMINI_CACHE_MAX_TOKENS:-32000}
+      GEMINI_CACHE_TIMEOUT_MS: ${GEMINI_CACHE_TIMEOUT_MS:-10}
+      GEMINI_CACHE_LOAD_TIMEOUT_S: ${GEMINI_CACHE_LOAD_TIMEOUT_S:-3}
+      GEMINI_CACHE_ALERT_THRESHOLD: ${GEMINI_CACHE_ALERT_THRESHOLD:-70}
+      GEMINI_CACHE_HOT_RELOAD: ${GEMINI_CACHE_HOT_RELOAD:-true}
+
       # --- Database Connection ---
       POSTGRES_DB: ${POSTGRES_DB:-WhizDB}
       POSTGRES_USER: ${POSTGRES_USER:-admin}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-whiz}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
+
+      # --- Redis Configuration ---
+      REDIS_HOST: redis-master
+      REDIS_PORT: 6379
+      REDIS_REPLICA_HOST: redis-replica
+      REDIS_REPLICA_PORT: 6379
+
+      # --- Hatchet Configuration ---
+      HATCHET_CLIENT_TOKEN: ${HATCHET_CLIENT_TOKEN}
+      HATCHET_SERVER_URL: http://hatchet-server:8080
 
       # --- Service Integrations ---
       FRESHDESK_DOMAIN: ${FRESHDESK_DOMAIN}
@@ -58,6 +195,7 @@ services:
       PARKWHIZ_MAX_RETRIES: ${PARKWHIZ_MAX_RETRIES:-3}
       PARKWHIZ_CACHE_TTL: ${PARKWHIZ_CACHE_TTL:-120}
       PARKWHIZ_DUPLICATE_DETECTION_ENABLED: ${PARKWHIZ_DUPLICATE_DETECTION_ENABLED:-true}
+      PARKWHIZ_API_VERIFICATION_ENABLED: ${PARKWHIZ_API_VERIFICATION_ENABLED:-false}
 
       # --- Webhook Configuration ---
       WEBHOOK_ENABLED: ${WEBHOOK_ENABLED:-true}
@@ -69,9 +207,16 @@ services:
       WEBHOOK_RATE_LIMIT: ${WEBHOOK_RATE_LIMIT:-100}
       WEBHOOK_RATE_LIMIT_WINDOW: ${WEBHOOK_RATE_LIMIT_WINDOW:-60}
       WEBHOOK_DEDUPLICATION_WINDOW: ${WEBHOOK_DEDUPLICATION_WINDOW:-60}
+
+      # --- Async Webhook Orchestration ---
+      ASYNC_WEBHOOK_ENABLED: ${ASYNC_WEBHOOK_ENABLED:-true}
+      IDEMPOTENCY_TTL_SECONDS: ${IDEMPOTENCY_TTL_SECONDS:-604800}
+      WORKER_PROCESSING_TIMEOUT: ${WORKER_PROCESSING_TIMEOUT:-300}
+      FAST_PATH_TIMEOUT: ${FAST_PATH_TIMEOUT:-30}
     ports:
       - "8800:8800"
       - "8801:8801"
+      - "9091:9091"  # Prometheus metrics endpoint
     volumes:
       - ./parlant:/app/app_tools
       - ./tests:/app/tests
@@ -81,12 +226,19 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis-master:
+        condition: service_healthy
     networks:
       - whiz-network
     restart: unless-stopped
 
 volumes:
   postgres_data:
+  redis_master_data:
+  redis_replica_data:
+  hatchet_postgres_data:
+  prometheus_data:
+  grafana_data:
 
 networks:
   whiz-network:
